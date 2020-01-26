@@ -3,6 +3,9 @@
 # existing setups. At the beginning of the test
 # it is normal to see timeouts while trying to
 # connect to the database.
+#
+# Copyright (C) Jeff Macdonald <macfisherman@gmail.com>
+#
 
 use Test::More;
 
