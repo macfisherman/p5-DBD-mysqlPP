@@ -330,7 +330,7 @@ sub bind_param
 		my $dbh = $sth->{Database};
 		$value = $dbh->quote($sth, $type);
 	}
-	my $params = $sth->FETCH('mysqlpp_param');
+	my $params = $sth->FETCH('mysqlpp_params');
 	$params->[$index - 1] = $value;
 }
 
@@ -852,6 +852,8 @@ http://github.com/tsucchi/p5-Net-MySQL
 Copyright (C) 2002-2011 Hiroyuki OYAMA. Japan. All rights reserved.
 
 Copyright (C) 2011 Takuya Tsuchida
+
+Copyright (C) 2020 Jeff Macdonald <macfisherman@gmail.com>
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
