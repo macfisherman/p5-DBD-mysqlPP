@@ -197,20 +197,32 @@ sub prepare
 sub commit
 {
 	my $dbh = shift;
-	if ($dbh->FETCH('Warn')) {
-		warn 'Commit ineffective while AutoCommit is on';
-	}
-	1;
+
+    my $mysql = $dbh->FETCH('mysqlpp_connection');
+    eval {
+        $mysql->query('COMMIT');
+    };
+    if ($@) {
+        $dbh->DBI::set_err(1, $@); # $mysql->get_error_message ???
+        return undef;
+    }
+    return 1;
 }
 
 
 sub rollback
 {
 	my $dbh = shift;
-	if ($dbh->FETCH('Warn')) {
-		warn 'Rollback ineffective while AutoCommit is on';
-	}
-	1;
+
+    my $mysql = $dbh->FETCH('mysqlpp_connection');
+    eval {
+        $mysql->query('ROLLBACK');
+    };
+    if ($@) {
+        $dbh->DBI::set_err(1, $@); # $mysql->get_error_message ???
+        return undef;
+    }
+    return 1;
 }
 
 
@@ -284,7 +296,7 @@ sub FETCH
 	my $dbh = shift;
 	my $key = shift;
 
-	return 1 if $key eq 'AutoCommit';
+	return $dbh->{AutoCommit} if $key eq 'AutoCommit';
 	return $dbh->{$key} if $key =~ /^(?:mysqlpp_.*|thread_id|mysql_insertid)$/;
 	return $dbh->SUPER::FETCH($key);
 }
@@ -296,13 +308,38 @@ sub STORE
 	my ($key, $value) = @_;
 
 	if ($key eq 'AutoCommit') {
-		die "Can't disable AutoCommit" unless $value;
+		my $old = $dbh->{$key};
+		my $never_set = !$dbh->{mysqlpp_ever_set_autocommit};
+
+		# This logic is stolen from DBD::Pg
+		if (!$old && $value && $never_set) {
+			# Do nothing; fall through
+		}
+		elsif (!$old && $value) {
+			# Turning it on: commit
+			# XXX: Avoid this if no uncommitted changes.
+			# XXX: Desirable?  See dbi-dev archives.
+			# XXX: Handle errors.
+			$dbh->{mysqlpp_connection}->query('COMMIT');
+		}
+		elsif ($old && !$value   ||  !$old && !$value && $never_set) {
+			# Turning it off, or initializing it to off at
+			# connection time: begin a new transaction
+			# XXX: Handle errors.
+			$dbh->{mysqlpp_connection}->query('START TRANSACTION');
+		}
+
+		$dbh->{mysqlpp_ever_set_autocommit} = 1;
+		$dbh->{$key} = $value;
+
 		return 1;
 	}
-	elsif ($key =~ /^(?:mysqlpp_.*|thread_id|mysql_insertid)$/) {
+
+	if ($key =~ /^(?:mysqlpp_.*|thread_id|mysql_insertid)$/) {
 		$dbh->{$key} = $value;
 		return 1;
 	}
+
 	return $dbh->SUPER::STORE($key, $value);
 }
 
@@ -409,7 +446,6 @@ sub FETCH
 	my $dbh = shift;
 	my $key = shift;
 
-	return 1 if $key eq 'AutoCommit';
 	return $dbh->{NAME} if $key eq 'NAME';
 	return $dbh->{$key} if $key =~ /^mysqlpp_/;
 	return $dbh->SUPER::FETCH($key);
@@ -448,7 +484,7 @@ sub _mysqlpp_bind_statement {
             my $value = $limit_found  && $params->[$param_idx] =~ qr/^\d+$/  ? $params->[$param_idx++]  #bind for LIMIT isn't need quote
                                                                              : $dbh->quote($params->[$param_idx++]);
             $splitted[$i] = $value;
-            if ( exists $splitted[$i + 1] 
+            if ( exists $splitted[$i + 1]
                    && $splitted[$i + 1] !~ qr/,/ # qr/,/ is for LIMIT ?, ?
                    && $splitted[$i + 1] !~ qr/\bOFFSET\b/i  ) {
                 $limit_found = 0;
@@ -752,7 +788,7 @@ All func() method cannot be used.
 =item * func('createdb')
 
 =item * func('dropdb')
- 
+
 =item * func('shutdown')
 
 =item * func('reload')
@@ -856,6 +892,6 @@ Copyright (C) 2011 Takuya Tsuchida
 Copyright (C) 2020 Jeff Macdonald <macfisherman@gmail.com>
 
 This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
+it under the same terms as Perl itself.
 
 =cut
